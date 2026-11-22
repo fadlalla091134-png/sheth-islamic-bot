@@ -1,0 +1,6 @@
+{
+  "name": "Sheth WhatsApp Bot Studio",
+  "description": "Production-ready CommonJS WhatsApp Bot backend (بوت شيث) powered by Baileys, Gemini 2.5 Flash, and Firebase Firestore, with a live command sandbox and GitHub code exporter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
