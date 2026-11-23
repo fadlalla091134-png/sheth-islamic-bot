@@ -1,4 +1,8 @@
 {
   "target_groups": [],
-  "asked_questions": []
+  "ayah_groups": [],
+  "asked_questions": [],
+  "allowed_users": [],
+  "group_antilink": {},
+  "bot_image": ""
 }

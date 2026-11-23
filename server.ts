@@ -50,7 +50,16 @@ function collectBotFiles(dir: string, baseDir: string): BotFileEntry[] {
 
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name === '.git') continue;
+    if (
+      entry.name === 'node_modules' ||
+      entry.name === '.git' ||
+      entry.name === 'session_auth' ||
+      entry.name === 'auth_info_baileys' ||
+      entry.name === 'session_backup.txt' ||
+      entry.name === '.env'
+    ) {
+      continue;
+    }
     const fullPath = path.resolve(dir, entry.name);
     // Strict path confinement check
     if (!fullPath.startsWith(baseDir + path.sep)) continue;
@@ -145,7 +154,9 @@ const DARES = [
 const KNOWN_COMMANDS = new Set([
   'menu', 'اوامر', 'القائمة', 'help',
   'شيث', 'ai', 'gpt', 'gemini', 'ترجم', 'تلخيص',
-  'ayah', 'ايه', 'آية', 'اذكار_الصباح', 'اذكار_المساء', 'سورة', 'surah',
+  'ayah', 'ايه', 'آية', 'تفعيل_اية', 'تفعيل_آية', 'enable_ayah', 'ayah_on',
+  'ايقاف_اية', 'تعطيل_اية', 'ايقاف_آية', 'disable_ayah', 'ayah_off',
+  'اذكار_الصباح', 'اذكار_المساء', 'سورة', 'surah',
   'مسابقة', 'quiz', 'ايقاف_المسابقة', 'stopquiz',
   'adduser', 'تفعيل_رقم', 'deluser', 'حذف_رقم', 'listusers', 'المفعلين',
   'setgroup', 'تثبيت_القروب', 'setbotimg', 'تغيير_الصورة', 'broadcast', 'اذاعة',
@@ -169,7 +180,7 @@ function buildMenuPreview(uptimeSec: number): string {
 │ 👤 *المالك:* شيث (${OWNER_NUMBER})
 │ ⏱️ *مدة التشغيل:* ${mins} دقيقة و ${secs} ثانية
 │ 💠 *البادئة:* [ . ]
-│ ⚙️ *إجمالي الأوامر:* 48 أمر فعّال
+│ ⚙️ *إجمالي الأوامر:* 50 أمر فعّال
 ╰┈────────────────────⊷
 
 ╭┈───〔 🤖 الذكاء الاصطناعي - شيث 〕┈───⊷
@@ -179,6 +190,7 @@ function buildMenuPreview(uptimeSec: number): string {
 
 ╭┈───〔 🕌 القسم الإسلامي والقرآن والمسابقات 〕┈───⊷
 │ ✦ .ايه | .ayah (آية + تفسير + سبب النزول)
+│ ✦ .تفعيل_اية | .ايقاف_اية (آية تلقائية 6ص و 6م)
 │ ✦ .اذكار_الصباح | .اذكار_المساء
 │ ✦ .سورة <رقم السورة 1-114>
 │ ✦ .مسابقة | .quiz | .ايقاف_المسابقة | .stopquiz
@@ -406,6 +418,30 @@ async function startServer() {
           ignored: false,
           type: 'text',
           text: formatted,
+          latencyMs: Date.now() - started,
+        });
+      }
+
+      if (['تفعيل_اية', 'تفعيل_آية', 'enable_ayah', 'ayah_on'].includes(cmd)) {
+        return res.json({
+          ignored: false,
+          type: 'text',
+          text:
+            `✅ *تم تفعيل ميزة الآية اليومية في هذه المحادثة بنجاح!*\n\n` +
+            `🕌 سيتم إرسال آية قرآنية مع *تفسيرها المختصر وسبب نزولها* تلقائياً:\n` +
+            `☀️ *الساعة 6:00 صباحاً*\n` +
+            `🌙 *الساعة 6:00 مساءً*\n` +
+            `🇸🇩 *التوقيت:* السودان (Africa/Khartoum)\n\n` +
+            `للإيقاف في أي وقت أرسل: \`.ايقاف_اية\``,
+          latencyMs: Date.now() - started,
+        });
+      }
+
+      if (['ايقاف_اية', 'تعطيل_اية', 'ايقاف_آية', 'disable_ayah', 'ayah_off'].includes(cmd)) {
+        return res.json({
+          ignored: false,
+          type: 'text',
+          text: '🛑 تم إيقاف الإرسال التلقائي للآية اليومية في هذه المحادثة بنجاح.',
           latencyMs: Date.now() - started,
         });
       }

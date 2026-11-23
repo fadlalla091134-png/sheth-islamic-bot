@@ -141,6 +141,27 @@ export const COMMAND_CATALOG: BotCommandSpec[] = [
     description: 'Fetches a random Quran verse (1–6236) with 2-line Tafsir and Asbab al-Nuzul.',
   },
   {
+    id: 'enable_ayah',
+    primary: '.تفعيل_اية',
+    aliases: ['.تفعيل_آية', '.enable_ayah', '.ayah_on'],
+    category: 'Quran',
+    access: 'Whitelisted',
+    pluginFile: 'plugins/quran.js',
+    example: '.تفعيل_اية',
+    description:
+      'Activates automated daily Quran verse + Tafsir + Asbab al-Nuzul at 6:00 AM & 6:00 PM Africa/Khartoum for the current chat/group.',
+  },
+  {
+    id: 'disable_ayah',
+    primary: '.ايقاف_اية',
+    aliases: ['.تعطيل_اية', '.disable_ayah', '.ayah_off'],
+    category: 'Quran',
+    access: 'Whitelisted',
+    pluginFile: 'plugins/quran.js',
+    example: '.ايقاف_اية',
+    description: 'Disables scheduled daily Quran verse delivery for the current chat/group.',
+  },
+  {
     id: 'morning',
     primary: '.اذكار_الصباح',
     aliases: ['.morning_adhkar'],

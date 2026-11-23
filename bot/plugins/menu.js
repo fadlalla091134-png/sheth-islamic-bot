@@ -1,19 +1,26 @@
 'use strict';
 
-const { getBotConfig } = require('../lib/firebase');
+const { isFirebaseConfigured, getBotConfig } = require('../lib/firebase');
+const { getLocalBotImage } = require('../lib/database');
 const { formatUptimeArabic } = require('../lib/helpers');
 
-// Clean default cover image URL (can be overridden via BOT_IMAGE_URL env or .setbotimg in Firestore)
+// Clean default cover image URL (can be overridden via BOT_IMAGE_URL env or .setbotimg)
 const DEFAULT_BOT_IMAGE_URL =
   process.env.BOT_IMAGE_URL ||
   'https://images.pexels.com/photos/2233416/pexels-photo-2233416.jpeg?auto=compress&cs=tinysrgb&w=1200';
 
 /**
- * Resolves the bot menu cover image from Firestore (.setbotimg) or default URL.
+ * Resolves the bot menu cover image from Firestore / local database (.setbotimg) or default URL.
  */
 async function resolveBotImageMedia() {
-  const config = await getBotConfig().catch(() => ({}));
-  const saved = config?.bot_image;
+  let saved = '';
+  if (isFirebaseConfigured()) {
+    const config = await getBotConfig().catch(() => ({}));
+    saved = config?.bot_image || '';
+  }
+  if (!saved) {
+    saved = getLocalBotImage();
+  }
 
   if (typeof saved === 'string' && saved.startsWith('data:image/')) {
     const base64Part = saved.split(',')[1];
@@ -46,6 +53,7 @@ function buildMenuCaption({ prefix, ownerName, ownerNumber, uptimeStr, totalComm
 
 ╭┈───〔 🕌 القسم الإسلامي والقرآن والمسابقات 〕┈───⊷
 │ ✦ ${p}ايه | ${p}ayah (آية + تفسير + سبب النزول)
+│ ✦ ${p}تفعيل_اية | ${p}ايقاف_اية (آية تلقائية 6ص و 6م)
 │ ✦ ${p}اذكار_الصباح
 │ ✦ ${p}اذكار_المساء
 │ ✦ ${p}سورة <رقم السورة 1-114>

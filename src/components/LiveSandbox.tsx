@@ -39,6 +39,7 @@ const PRESET_SENDERS = [
 ];
 
 const QUICK_COMMANDS = [
+  { label: '.تفعيل_اية (6AM/6PM Quran)', cmd: '.تفعيل_اية' },
   { label: '.مسابقة (Poll Quiz)', cmd: '.مسابقة' },
   { label: '.اوامر (Menu)', cmd: '.اوامر' },
   { label: '.شيث (Sudanese AI)', cmd: '.شيث كيف أطور مهاراتي في البرمجة؟' },

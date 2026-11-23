@@ -1,6 +1,7 @@
 'use strict';
 
 const {
+  isFirebaseConfigured,
   addAllowedUser,
   removeAllowedUser,
   listAllowedUsers,
@@ -8,7 +9,15 @@ const {
   setBotImage,
   getBotConfig,
 } = require('../lib/firebase');
-const { addTargetGroup } = require('../lib/database');
+const {
+  addTargetGroup,
+  addAyahGroup,
+  getAyahGroups,
+  getLocalAllowedUsers,
+  addLocalAllowedUser,
+  removeLocalAllowedUser,
+  setLocalBotImage,
+} = require('../lib/database');
 const {
   cleanPhoneNumber,
   getQuotedMessage,
@@ -39,7 +48,10 @@ const commands = [
         return reply('❌ يرجى كتابة الرقم مع رمز الدولة أو الرد على رسالة العضو.\nمثال: `.adduser 249912345678`');
       }
 
-      await addAllowedUser(targetNumber, senderNumber);
+      if (isFirebaseConfigured()) {
+        await addAllowedUser(targetNumber, senderNumber);
+      }
+      addLocalAllowedUser(targetNumber);
       return reply(`✅ تم تفعيل الرقم بنجاح وإضافته إلى القائمة المسموحة:\n📱 \`${targetNumber}\``);
     },
   },
@@ -62,7 +74,11 @@ const commands = [
         return reply('❌ يرجى كتابة الرقم المراد حذفه.\nمثال: `.deluser 249912345678`');
       }
 
-      const removed = await removeAllowedUser(targetNumber);
+      let removed = removeLocalAllowedUser(targetNumber);
+      if (isFirebaseConfigured()) {
+        const fbRemoved = await removeAllowedUser(targetNumber);
+        removed = removed || fbRemoved;
+      }
       if (!removed) {
         return reply(`ℹ️ الرقم \`${targetNumber}\` غير موجود في قائمة المفعلين.`);
       }
@@ -76,12 +92,20 @@ const commands = [
     ownerOnly: true,
     description: 'عرض جميع الأرقام المفعلة في البوت',
     async execute({ reply, ownerNumber }) {
-      const users = await listAllowedUsers();
+      const merged = new Set(getLocalAllowedUsers());
+      if (isFirebaseConfigured()) {
+        const fbUsers = await listAllowedUsers().catch(() => []);
+        for (const u of fbUsers) {
+          const num = cleanPhoneNumber(u.number || u.id);
+          if (num) merged.add(num);
+        }
+      }
+      const users = Array.from(merged).sort();
       if (!users.length) {
         return reply(`📋 *قائمة المفعلين فارغة حالياً.*\n👑 المالك فقط: \`${ownerNumber}\``);
       }
 
-      const lines = users.map((u, i) => `${i + 1}. \`${u.number || u.id}\``).join('\n');
+      const lines = users.map((num, i) => `${i + 1}. \`${num}\``).join('\n');
       return reply(
         `╭┈───〔 قائمة المفعلين 〕┈───⊷\n` +
           `│ 👑 المالك: \`${ownerNumber}\`\n` +
@@ -102,8 +126,11 @@ const commands = [
       if (!isGroup) {
         return reply('❌ هذا الأمر يعمل داخل القروبات فقط.');
       }
-      await setTargetGroupId(from);
+      if (isFirebaseConfigured()) {
+        await setTargetGroupId(from);
+      }
       addTargetGroup(from);
+      addAyahGroup(from);
       return reply(
         `✅ *تم تثبيت هذا القروب بنجاح!*\n` +
           `🕌 الآيات القرآنية اليومية: 6:00 صباحاً و 6:00 مساءً (Africa/Khartoum).\n` +
@@ -127,18 +154,24 @@ const commands = [
         // Firestore document field safety check (keep under ~700KB raw => ~930KB base64)
         if (buffer.length > 700 * 1024) {
           return reply(
-            '⚠️ حجم الصورة كبير جداً للتخزين المباشر في Firestore (الحد الأقصى 700KB).\nيرجى إرسال صورة أخف حجماً أو إرسال رابط صورة مباشر بعد الأمر: `.setbotimg https://...`'
+            '⚠️ حجم الصورة كبير جداً للتخزين المباشر (الحد الأقصى 700KB).\nيرجى إرسال صورة أخف حجماً أو إرسال رابط صورة مباشر بعد الأمر: `.setbotimg https://...`'
           );
         }
         const mimeType = imageNode.mimetype || 'image/jpeg';
         const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
-        await setBotImage(dataUri);
+        if (isFirebaseConfigured()) {
+          await setBotImage(dataUri);
+        }
+        setLocalBotImage(dataUri);
         return reply('✅ تم تحديث صورة قائمة البوت الرسمية وحفظها في قاعدة البيانات بنجاح.');
       }
 
       const urlArg = args[0];
       if (urlArg && isSafePublicUrl(urlArg)) {
-        await setBotImage(urlArg);
+        if (isFirebaseConfigured()) {
+          await setBotImage(urlArg);
+        }
+        setLocalBotImage(urlArg);
         return reply('✅ تم حفظ رابط صورة قائمة البوت الرسمية بنجاح.');
       }
 
@@ -156,16 +189,25 @@ const commands = [
         return reply('❌ يرجى كتابة نص الإذاعة بعد الأمر.\nمثال: `.اذاعة السلام عليكم ورحمة الله`');
       }
 
-      const users = await listAllowedUsers();
-      const config = await getBotConfig();
-
       const targets = new Set();
-      for (const u of users) {
-        const num = cleanPhoneNumber(u.number || u.id);
-        if (num) targets.add(`${num}@s.whatsapp.net`);
+      for (const num of getLocalAllowedUsers()) {
+        const cleaned = cleanPhoneNumber(num);
+        if (cleaned) targets.add(`${cleaned}@s.whatsapp.net`);
       }
-      if (config.target_group_id) {
-        targets.add(config.target_group_id);
+      for (const gid of getAyahGroups()) {
+        if (gid) targets.add(gid);
+      }
+
+      if (isFirebaseConfigured()) {
+        const users = await listAllowedUsers().catch(() => []);
+        const config = await getBotConfig().catch(() => ({}));
+        for (const u of users) {
+          const num = cleanPhoneNumber(u.number || u.id);
+          if (num) targets.add(`${num}@s.whatsapp.net`);
+        }
+        if (config.target_group_id) {
+          targets.add(config.target_group_id);
+        }
       }
 
       if (targets.size === 0) {

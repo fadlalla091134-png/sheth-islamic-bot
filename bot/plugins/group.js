@@ -1,7 +1,23 @@
 'use strict';
 
-const { getGroupSettings, setGroupAntilink } = require('../lib/firebase');
+const { isFirebaseConfigured, getGroupSettings, setGroupAntilink } = require('../lib/firebase');
+const { getLocalAntilink, setLocalAntilink } = require('../lib/database');
 const { cleanPhoneNumber, getQuotedMessage, getMentionedJids } = require('../lib/helpers');
+
+async function readAntilinkSetting(groupJid) {
+  if (isFirebaseConfigured()) {
+    const settings = await getGroupSettings(groupJid).catch(() => null);
+    if (settings && typeof settings.antilink === 'boolean') return settings.antilink;
+  }
+  return getLocalAntilink(groupJid);
+}
+
+async function writeAntilinkSetting(groupJid, enabled) {
+  setLocalAntilink(groupJid, enabled);
+  if (isFirebaseConfigured()) {
+    await setGroupAntilink(groupJid, enabled).catch(() => {});
+  }
+}
 
 const LINK_REGEX = /(https?:\/\/[^\s]+|chat\.whatsapp\.com\/[a-zA-Z0-9]+|wa\.me\/[0-9]+)/i;
 
@@ -40,8 +56,8 @@ async function handleAntilink(sock, msg, text, ownerNumber) {
     return false;
   }
 
-  const settings = await getGroupSettings(from).catch(() => ({ antilink: false }));
-  if (!settings.antilink) return false;
+  const antilinkEnabled = await readAntilinkSetting(from);
+  if (!antilinkEnabled) return false;
 
   const sender = msg.key.participant || from;
   if (cleanPhoneNumber(sender) === ownerNumber) return false;
@@ -167,17 +183,17 @@ const commands = [
 
       const mode = (args[0] || '').toLowerCase();
       if (['on', 'تفعيل', 'تشغيل', '1'].includes(mode)) {
-        await setGroupAntilink(from, true);
+        await writeAntilinkSetting(from, true);
         return reply('🛡️ تم *تفعيل* نظام منع الروابط في هذا القروب.');
       }
       if (['off', 'تعطيل', 'ايقاف', '0'].includes(mode)) {
-        await setGroupAntilink(from, false);
+        await writeAntilinkSetting(from, false);
         return reply('🔓 تم *تعطيل* نظام منع الروابط في هذا القروب.');
       }
 
-      const current = await getGroupSettings(from);
+      const enabled = await readAntilinkSetting(from);
       return reply(
-        `🛡️ حالة منع الروابط حالياً: *${current.antilink ? 'مفعّل ✅' : 'معطّل ❌'}*\n` +
+        `🛡️ حالة منع الروابط حالياً: *${enabled ? 'مفعّل ✅' : 'معطّل ❌'}*\n` +
           `للتغيير استخدم: \`.منع_الروابط تفعيل\` أو \`.منع_الروابط تعطيل\``
       );
     },

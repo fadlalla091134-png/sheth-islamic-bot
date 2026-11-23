@@ -12,6 +12,7 @@ OWNER_NUMBER=249905358205
 OWNER_NAME=شيث
 PREFIX=.
 GEMINI_API_KEY=your_gemini_api_key
+SESSION_BACKUP_JSON={"creds.json":"..."}
 FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}
 PORT=3000`;
 
@@ -116,9 +117,9 @@ export function ArchitectureView({ onInspectFile, onOpenSandbox }: ArchitectureV
         <div className="border border-[#1E2A38] bg-[#111923] rounded-lg p-4">
           <div className="text-xs text-[#7B8CA3]">Auth Session Store</div>
           <div className="mt-1.5 font-mono text-base font-semibold text-[#F0F6FC]">
-            Firestore Cloud
+            session_auth + Cloud
           </div>
-          <div className="mt-1 text-xs text-[#6E7F94]">8-digit Pairing Code (no QR)</div>
+          <div className="mt-1 text-xs text-[#6E7F94]">Auto-restores from session_backup.txt</div>
         </div>
       </div>
 
@@ -130,11 +131,30 @@ export function ArchitectureView({ onInspectFile, onOpenSandbox }: ArchitectureV
             <div className="py-3 flex items-start justify-between gap-4">
               <div>
                 <div className="font-mono text-emerald-300 font-medium">
+                  ./session_auth (auto-restored from session_backup.txt)
+                </div>
+                <p className="text-[#8B9BB0] mt-1">
+                  Unpacks <code className="text-[#D8E2EE]">SESSION_BACKUP_JSON</code> or{' '}
+                  <code className="text-[#D8E2EE]">session_backup.txt</code> on startup if{' '}
+                  <code className="text-[#D8E2EE]">./session_auth</code> is missing, with path-traversal validation.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onInspectFile('lib/sessionBootstrap.js')}
+                className="font-mono text-[#7B8CA3] hover:text-emerald-300 shrink-0 cursor-pointer"
+              >
+                lib/sessionBootstrap.js
+              </button>
+            </div>
+            <div className="py-3 flex items-start justify-between gap-4">
+              <div>
+                <div className="font-mono text-emerald-300 font-medium">
                   baileys_auth / primary_session / state
                 </div>
                 <p className="text-[#8B9BB0] mt-1">
                   Persists Baileys <code className="text-[#D8E2EE]">creds</code> and all Signal keys serialized via{' '}
-                  <code className="text-[#D8E2EE]">BufferJSON</code> so restarts never log out the bot.
+                  <code className="text-[#D8E2EE]">BufferJSON</code> when running in Firestore cloud mode.
                 </p>
               </div>
               <button
@@ -195,18 +215,18 @@ export function ArchitectureView({ onInspectFile, onOpenSandbox }: ArchitectureV
             <div className="py-3 flex items-start justify-between gap-4">
               <div>
                 <div className="font-mono text-amber-300 font-medium">
-                  ./database.json (target_groups &amp; asked_questions)
+                  ./database.json (ayah_groups, target_groups, asked_questions)
                 </div>
                 <p className="text-[#8B9BB0] mt-1">
-                  Tracks all groups scheduled for the 8:00 PM Islamic Poll Quiz and stores every asked question to guarantee zero repeats.
+                  Stores chats activated via <code className="text-[#D8E2EE]">.تفعيل_اية</code> (6 AM / 6 PM Khartoum), quiz groups (8 PM), and every asked question to guarantee zero repeats.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => onInspectFile('plugins/quiz.js')}
+                onClick={() => onInspectFile('plugins/quran.js')}
                 className="font-mono text-[#7B8CA3] hover:text-emerald-300 shrink-0 cursor-pointer"
               >
-                plugins/quiz.js
+                plugins/quran.js
               </button>
             </div>
           </div>

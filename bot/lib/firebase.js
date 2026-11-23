@@ -5,6 +5,13 @@ const admin = require('firebase-admin');
 let dbInstance = null;
 
 /**
+ * Returns true if FIREBASE_SERVICE_ACCOUNT is provided in environment variables.
+ */
+function isFirebaseConfigured() {
+  return Boolean(process.env.FIREBASE_SERVICE_ACCOUNT && process.env.FIREBASE_SERVICE_ACCOUNT.trim());
+}
+
+/**
  * Parses FIREBASE_SERVICE_ACCOUNT from raw JSON or Base64-encoded JSON string.
  */
 function parseServiceAccount(raw) {
@@ -147,6 +154,7 @@ async function setGroupAntilink(groupJid, enabled) {
 }
 
 module.exports = {
+  isFirebaseConfigured,
   initFirebase,
   getDb,
   isUserAllowed,

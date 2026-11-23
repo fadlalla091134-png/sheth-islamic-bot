@@ -13,17 +13,25 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
 } = require('@whiskeysockets/baileys');
 
 const {
+  isFirebaseConfigured,
   initFirebase,
   isUserAllowed,
   getBotConfig,
   setTargetGroupId,
 } = require('./lib/firebase');
 const { useFirestoreAuthState } = require('./lib/authState');
+const { ensureSessionAuthFromBackup } = require('./lib/sessionBootstrap');
 const { cleanPhoneNumber, extractMessageText } = require('./lib/helpers');
-const { addTargetGroup } = require('./lib/database');
+const {
+  getTargetGroups,
+  addTargetGroup,
+  addAyahGroup,
+  isLocalUserAllowed,
+} = require('./lib/database');
 const { sendScheduledAyah } = require('./plugins/quran');
 const { handleAntilink } = require('./plugins/group');
 const {
@@ -142,10 +150,23 @@ function initQuranCronJobs() {
 // =========================================================
 async function ensureTargetGroupJoined(sock) {
   try {
-    const config = await getBotConfig();
-    if (config?.target_group_id) {
-      addTargetGroup(config.target_group_id);
-      console.log(`[Group] Target group already configured: ${config.target_group_id}`);
+    let existingGroupId = null;
+    if (isFirebaseConfigured()) {
+      const config = await getBotConfig().catch(() => ({}));
+      existingGroupId = config?.target_group_id || null;
+    }
+
+    if (!existingGroupId) {
+      const localGroups = getTargetGroups();
+      if (localGroups.length > 0) {
+        existingGroupId = localGroups[0];
+      }
+    }
+
+    if (existingGroupId) {
+      addTargetGroup(existingGroupId);
+      addAyahGroup(existingGroupId);
+      console.log(`[Group] Target group already configured: ${existingGroupId}`);
       return;
     }
 
@@ -163,9 +184,12 @@ async function ensureTargetGroupJoined(sock) {
     }
 
     if (groupJid) {
-      await setTargetGroupId(groupJid);
+      if (isFirebaseConfigured()) {
+        await setTargetGroupId(groupJid).catch(() => {});
+      }
       addTargetGroup(groupJid);
-      console.log(`[Group] Saved target_group_id to Firestore & database.json: ${groupJid}`);
+      addAyahGroup(groupJid);
+      console.log(`[Group] Saved target group to database.json (and Firestore if enabled): ${groupJid}`);
     }
   } catch (err) {
     console.error('[Group] Auto-join target group failed:', err.message);
@@ -178,8 +202,33 @@ async function ensureTargetGroupJoined(sock) {
 let pairingRequested = false;
 
 async function startBot() {
-  const db = initFirebase();
-  const { state, saveCreds, clearSession } = await useFirestoreAuthState(db);
+  // Automatically unpack session_backup.txt / SESSION_BACKUP_JSON into ./session_auth if missing
+  const sessionBootstrap = ensureSessionAuthFromBackup();
+  const firebaseReady = isFirebaseConfigured();
+
+  let state;
+  let saveCreds;
+  let clearSession;
+
+  if (sessionBootstrap.hasLocalSession || !firebaseReady) {
+    console.log(`[Auth] Using multi-file session directory: ${sessionBootstrap.dir}`);
+    const multiAuth = await useMultiFileAuthState(sessionBootstrap.dir);
+    state = multiAuth.state;
+    saveCreds = multiAuth.saveCreds;
+    clearSession = async () => {
+      if (fs.existsSync(sessionBootstrap.dir)) {
+        fs.rmSync(sessionBootstrap.dir, { recursive: true, force: true });
+      }
+    };
+  } else {
+    console.log('[Auth] Using Firebase Firestore cloud session store.');
+    const db = initFirebase();
+    const cloudAuth = await useFirestoreAuthState(db);
+    state = cloudAuth.state;
+    saveCreds = cloudAuth.saveCreds;
+    clearSession = cloudAuth.clearSession;
+  }
+
   const { version } = await fetchLatestBaileysVersion();
   const logger = pino({ level: 'silent' });
 
@@ -246,7 +295,7 @@ async function startBot() {
       console.warn(`[WhatsApp] Connection closed (code=${statusCode}, loggedOut=${loggedOut}).`);
 
       if (loggedOut) {
-        console.warn('[WhatsApp] Session logged out. Clearing Firestore auth state...');
+        console.warn('[WhatsApp] Session logged out. Clearing active auth session...');
         await clearSession().catch(() => {});
         pairingRequested = false;
       }
@@ -312,9 +361,12 @@ async function startBot() {
         // Ignore bot's own outgoing replies unless sent by the owner's linked phone
         const isOwner = senderNumber === OWNER_NUMBER || (msg.key.fromMe && BOT_NUMBER === OWNER_NUMBER);
 
-        // STRICT COMMAND LOCK: Only Owner or Firestore `allowed_users` may execute commands
+        // STRICT COMMAND LOCK: Only Owner or whitelisted users (database.json / Firestore) may execute commands
         if (!isOwner) {
-          const allowed = await isUserAllowed(senderNumber).catch(() => false);
+          let allowed = isLocalUserAllowed(senderNumber);
+          if (!allowed && isFirebaseConfigured()) {
+            allowed = await isUserAllowed(senderNumber).catch(() => false);
+          }
           if (!allowed) continue;
         }
 

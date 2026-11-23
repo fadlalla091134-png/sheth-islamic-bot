@@ -2,7 +2,10 @@
 
 const axios = require('axios');
 const { getAyahTafsirAndAsbab } = require('../lib/gemini');
-const { getBotConfig } = require('../lib/firebase');
+const { isFirebaseConfigured, getBotConfig, setTargetGroupId } = require('../lib/firebase');
+const { getAyahGroups, addAyahGroup, removeAyahGroup } = require('../lib/database');
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const SURAH_NAMES = [
   'الفاتحة', 'البقرة', 'آل عمران', 'النساء', 'المائدة', 'الأنعام', 'الأعراف', 'الأنفال', 'التوبة', 'يونس',
@@ -80,19 +83,39 @@ async function buildRandomAyahMessage(headerTitle = 'آية اليوم') {
 
 /**
  * Scheduled job invoked by node-cron at 06:00 AM & 06:00 PM Africa/Khartoum.
+ * Sends a random Quran verse + concise Tafsir + Asbab al-Nuzul to all chats/groups
+ * activated via .تفعيل_اية (saved in ./database.json) and Firestore target_group_id.
  */
 async function sendScheduledAyah(sock, label = 'الورد القرآني اليومي') {
   try {
-    const config = await getBotConfig();
-    const targetGroupId = config?.target_group_id;
-    if (!targetGroupId) {
-      console.warn('[cron:quran] No target_group_id configured in Firestore. Skipping.');
+    const targets = new Set(getAyahGroups());
+
+    if (isFirebaseConfigured()) {
+      const config = await getBotConfig().catch(() => ({}));
+      if (config?.target_group_id) {
+        targets.add(config.target_group_id);
+      }
+    }
+
+    if (targets.size === 0) {
+      console.warn('[cron:quran] No groups/chats activated via .تفعيل_اية or target_group_id. Skipping.');
       return;
     }
 
     const message = await buildRandomAyahMessage(label);
-    await sock.sendMessage(targetGroupId, { text: message });
-    console.log(`[cron:quran] Sent scheduled ayah (${label}) to ${targetGroupId}`);
+    let sent = 0;
+
+    for (const jid of targets) {
+      try {
+        await sock.sendMessage(jid, { text: message });
+        sent += 1;
+        await sleep(1000);
+      } catch (sendErr) {
+        console.error(`[cron:quran] Failed sending to ${jid}:`, sendErr.message);
+      }
+    }
+
+    console.log(`[cron:quran] Sent scheduled ayah (${label}) to ${sent}/${targets.size} chat(s).`);
   } catch (err) {
     console.error('[cron:quran] Failed to send scheduled ayah:', err.message);
   }
@@ -112,6 +135,44 @@ const commands = [
         console.error('[quran:ayah] Error:', err.message);
         return reply('⚠️ تعذر جلب الآية الكريمة حالياً، حاول بعد قليل.');
       }
+    },
+  },
+  {
+    name: 'تفعيل_اية',
+    aliases: ['تفعيل_آية', 'enable_ayah', 'ayah_on'],
+    category: 'quran',
+    description: 'تفعيل إرسال آية وتفسيرها وسبب نزولها تلقائياً الساعة 6:00 صباحاً و 6:00 مساءً بتوقيت السودان',
+    async execute({ from, isGroup, reply }) {
+      const added = addAyahGroup(from);
+      if (isGroup && isFirebaseConfigured()) {
+        await setTargetGroupId(from).catch(() => {});
+      }
+
+      const statusLine = added
+        ? '✅ *تم تفعيل ميزة الآية اليومية في هذه المحادثة بنجاح!*'
+        : 'ℹ️ *ميزة الآية اليومية مفعّلة مسبقاً في هذه المحادثة!*';
+
+      return reply(
+        `${statusLine}\n\n` +
+          `🕌 سيتم إرسال آية قرآنية مع *تفسيرها المختصر وسبب نزولها* تلقائياً:\n` +
+          `☀️ *الساعة 6:00 صباحاً*\n` +
+          `🌙 *الساعة 6:00 مساءً*\n` +
+          `🇸🇩 *التوقيت:* السودان (Africa/Khartoum)\n\n` +
+          `للإيقاف في أي وقت أرسل: \`.ايقاف_اية\``
+      );
+    },
+  },
+  {
+    name: 'ايقاف_اية',
+    aliases: ['تعطيل_اية', 'ايقاف_آية', 'disable_ayah', 'ayah_off'],
+    category: 'quran',
+    description: 'إيقاف الإرسال التلقائي للآية اليومية في المحادثة الحالية',
+    async execute({ from, reply }) {
+      const removed = removeAyahGroup(from);
+      if (!removed) {
+        return reply('ℹ️ ميزة الآية اليومية غير مفعّلة في هذه المحادثة.');
+      }
+      return reply('🛑 تم إيقاف الإرسال التلقائي للآية اليومية في هذه المحادثة بنجاح.');
     },
   },
   {
